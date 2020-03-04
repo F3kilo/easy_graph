@@ -77,6 +77,22 @@ impl<T: Hash + Eq + Clone> Graph<T> {
         true
     }
 
+    /// Removes vertex from graph.
+    /// # Arguments:
+    /// `vertex` - vertex, that must be removed.
+    /// # Returns:
+    /// If vertex exist, than set of its connections. Else `None`.
+    pub fn remove_vertex(&mut self, v: &T) -> Option<HashSet<T>> {
+        if let Some(connections) = self.verts.remove(v) {
+            for c in &connections {
+                self.verts.get_mut(c).unwrap().remove(v);
+            }
+            return Some(connections);
+        }
+
+        None
+    }
+
     /// Adds edge to graph.
     /// # Arguments:
     /// `v1` - vertex, that will be connected with `v2`.
@@ -152,6 +168,49 @@ impl<T: Hash + Eq + Clone> Graph<T> {
     pub fn is_empty(&self) -> bool {
         self.verts.is_empty()
     }
+
+    /// Removes all points, that have less connections than `weak_level`.
+    /// In other words, only vertices with more or equal connections than `weak_level`
+    /// remains. Complexity: `O(n)`
+    /// # Returns:
+    /// Set of removed vertices
+    /// # Example:
+    /// ```
+    /// use easy_graph::Graph;
+    /// let verts = vec![0,1,2,3];
+    /// let conns = vec![(0, 1), (1, 2), (2, 0), (2, 3)];
+    /// let mut graph = Graph::from_data(verts.into_iter(), conns.into_iter());
+    /// graph.remove_weak_connected(2);
+    /// assert_eq!(graph.len(), 3);
+    /// assert!(graph.contains(&0));
+    /// assert!(graph.contains(&1));
+    /// assert!(graph.contains(&2));
+    /// assert!(!graph.contains(&3));
+    /// assert!(!graph.connects_of(&2).unwrap().contains(&3));
+    /// ```
+    pub fn remove_weak_connected(&mut self, weak_level: usize) -> HashSet<T> {
+        let mut to_process: HashSet<T> = self.verts.iter()
+            .filter(|(_, c)| c.len() < weak_level)
+            .map(|(v, _)| v.clone()).collect();
+
+        let mut all_removed = HashSet::with_capacity(self.len());
+
+        while !to_process.is_empty() {
+            let processing = to_process;
+            to_process = HashSet::with_capacity(processing.len() * 4);
+            for v in processing {
+                if self.contains(&v) {
+                    let removed_vert_neighbors = self.remove_vertex(&v).unwrap();
+                    all_removed.insert(v);
+                    let weak_connected_neighbors = removed_vert_neighbors
+                        .into_iter()
+                        .filter(|n| self.connects_of(n).unwrap().len() < weak_level);
+                    to_process.extend(weak_connected_neighbors);
+                }
+            }
+        }
+        all_removed
+    }
 }
 
 impl<T: Eq + Hash> PartialEq<Graph<T>> for Graph<T> {
@@ -219,6 +278,18 @@ mod tests {
     }
 
     #[test]
+    fn remove_vertex() {
+        let mut g = test_graph();
+        assert!(g.remove_vertex(&22).is_none());
+        let c = g.remove_vertex(&2);
+        assert!(c.is_some());
+        let c = c.unwrap();
+        assert_eq!(c.len(), 2);
+        assert!(c.contains(&1));
+        assert!(c.contains(&3));
+    }
+
+    #[test]
     fn add_edge() {
         let mut g = test_graph();
         g.add_edge(&1, &4);
@@ -233,5 +304,33 @@ mod tests {
         assert!(!g.is_connected(&0, &1));
         assert!(!g.is_connected(&1, &0));
         g.remove_edge(&1, &0);
+    }
+
+    #[test]
+    fn remove_weak_connected() {
+        let mut g = test_graph();
+        g.add_vertex(11);
+        g.add_vertex(12);
+        g.add_edge(&0, &11);
+        g.add_edge(&11, &12);
+        g.add_edge(&2, &4);
+        g.add_edge(&10, &3);
+        g.add_edge(&10, &2);
+        g.add_edge(&1, &2);
+        assert_eq!(g.len(), 8);
+        g.remove_weak_connected(2);
+        assert_eq!(g.len(), 6);
+        assert!(g.contains(&0));
+        assert!(g.contains(&1));
+        assert!(g.contains(&2));
+        assert!(g.contains(&3));
+        assert!(g.contains(&4));
+        assert!(g.contains(&10));
+        g.remove_weak_connected(3);
+        assert_eq!(g.len(), 4);
+        assert!(g.contains(&2));
+        assert!(g.contains(&3));
+        assert!(g.contains(&4));
+        assert!(g.contains(&10));
     }
 }
