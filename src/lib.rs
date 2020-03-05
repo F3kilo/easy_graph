@@ -1,6 +1,7 @@
 use std::collections::{HashMap, HashSet};
 use std::fmt::Debug;
 use std::hash::Hash;
+pub mod connected_graph;
 
 /// Determine default capacity of connections set for every vertex.
 pub const DEFAULT_CONNECTIONS_PER_VERTEX: usize = 4;
