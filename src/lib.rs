@@ -211,6 +211,52 @@ impl<T: Hash + Eq + Clone> Graph<T> {
         }
         all_removed
     }
+
+    /// Returns set of vertices, for which exists path to `vertex`.
+    pub fn verts_with_path_to(&self, vertex: &T) -> HashSet<T> {
+        let mut to_process = HashSet::with_capacity(self.len());
+        to_process.insert(vertex.clone());
+        let mut separate_part_verts = HashSet::with_capacity(self.len());
+        while !to_process.is_empty() {
+            let to_process_iter = to_process.into_iter();
+            to_process = HashSet::with_capacity(self.len());
+            for v in to_process_iter {
+                let connections_iter = self.verts.get(&v).unwrap().clone().into_iter();
+                to_process.extend(connections_iter.filter(|c| !separate_part_verts.contains(c)));
+                separate_part_verts.insert(v);
+            }
+        }
+        separate_part_verts
+    }
+
+    /// Takes connected graph that contains `vertex`.
+    pub fn take_connected_graph(&mut self, vertex: &T) -> Self {
+        if !self.verts.contains_key(vertex) {
+            return Self::new();
+        }
+
+        let separate_part_verts = self.verts_with_path_to(vertex);
+
+        let mut separate_part = Self::with_capacity(self.len(), self.edge_per_vertex_capacity);
+        for v in separate_part_verts {
+            let (v, c) = self.verts.remove_entry(&v).unwrap();
+            separate_part.verts.insert(v, c);
+        }
+
+        separate_part
+    }
+
+    /// Split `self` into connected graphs.
+    pub fn into_connected_graphs(mut self) -> Vec<Self> {
+        let separate_part_capacity = 4;
+        let mut separate_parts = Vec::with_capacity(separate_part_capacity);
+        while !self.is_empty() {
+            let start = self.verts.iter().next().unwrap().0.clone();
+            separate_parts.push(self.take_connected_graph(&start));
+        }
+
+        separate_parts
+    }
 }
 
 impl<T: Eq + Hash> PartialEq<Graph<T>> for Graph<T> {
@@ -243,13 +289,16 @@ mod tests {
 
         assert_eq!(verts.len(), g.len());
 
+        assert_test_data(g);
+    }
+
+    fn assert_test_data(g: Graph<i32>) {
         assert!(g.contains(&0));
         assert!(g.contains(&1));
         assert!(g.contains(&2));
         assert!(g.contains(&3));
         assert!(g.contains(&4));
         assert!(g.contains(&10));
-
         assert!(g.is_connected(&0, &10));
         assert!(g.is_connected(&0, &1));
         assert!(g.is_connected(&1, &0));
@@ -332,5 +381,87 @@ mod tests {
         assert!(g.contains(&3));
         assert!(g.contains(&4));
         assert!(g.contains(&10));
+    }
+
+
+    #[test]
+    fn verts_with_path_to() {
+        let mut g = test_graph();
+        g.add_vertex(20);
+        g.add_vertex(30);
+        g.add_vertex(40);
+        g.add_edge(&20, &30);
+        g.add_edge(&30, &40);
+        g.add_edge(&40, &20);
+
+        let cg1 = g.verts_with_path_to(&0);
+        let cg2 = g.verts_with_path_to(&20);
+
+        assert_eq!(cg1.len(), 6);
+        assert_eq!(cg2.len(), 3);
+
+        assert!(cg1.contains(&0));
+        assert!(cg1.contains(&1));
+        assert!(cg1.contains(&2));
+        assert!(cg1.contains(&3));
+        assert!(cg1.contains(&4));
+        assert!(cg1.contains(&10));
+
+        assert!(cg2.contains(&20));
+        assert!(cg2.contains(&30));
+        assert!(cg2.contains(&40));
+    }
+
+    #[test]
+    fn take_connected_graph() {
+        let mut g = test_graph();
+        g.add_vertex(20);
+        g.add_vertex(30);
+        g.add_vertex(40);
+        g.add_edge(&20, &30);
+        g.add_edge(&30, &40);
+        g.add_edge(&40, &20);
+
+        assert!(g.take_connected_graph(&50).is_empty());
+        assert_eq!(g.len(), 9);
+
+        let sp = g.take_connected_graph(&20);
+        assert_eq!(g.len(), 6);
+        assert_eq!(sp.len(), 3);
+
+        assert_test_data(g);
+
+        assert_separate_part(sp);
+    }
+
+    fn assert_separate_part(sp: Graph<i32>) {
+        assert!(sp.contains(&20));
+        assert!(sp.contains(&30));
+        assert!(sp.contains(&40));
+        assert!(sp.is_connected(&20, &30));
+        assert!(sp.is_connected(&30, &40));
+        assert!(sp.is_connected(&40, &20));
+    }
+
+    #[test]
+    fn into_connected_graphs() {
+        let mut g = test_graph();
+        g.add_vertex(20);
+        g.add_vertex(30);
+        g.add_vertex(40);
+        g.add_edge(&20, &30);
+        g.add_edge(&30, &40);
+        g.add_edge(&40, &20);
+
+        let mut  separate_parts = g.into_connected_graphs();
+        assert_eq!(separate_parts.len(), 2);
+
+        if separate_parts[0].contains(&20) {
+            assert_test_data(separate_parts.remove(1));
+            assert_separate_part(separate_parts.remove(0));
+        } else {
+            assert_separate_part(separate_parts.remove(1));
+            assert_test_data(separate_parts.remove(0));
+        }
     }
 }
