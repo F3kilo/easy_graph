@@ -30,4 +30,10 @@ impl<T: Eq + Hash + Clone> ConnectedGraph<T>{
     pub fn add_edge(&mut self, v1: &T, v2: &T) -> bool {
         self.0.add_edge(v1, v2)
     }
+
+    /// Removes all vertices with single connection.
+    /// After that operation, all left vertices will have at least two connections.
+    pub fn remove_single_connected(&mut self) {
+        self.0.remove_weak_connected(2);
+    }
 }
